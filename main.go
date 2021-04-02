@@ -30,14 +30,15 @@ func main() {
 
   port := flag.Int("p", 8080, "Port to forward")
   subdomain := flag.String("s", "", "Subdomain to forward to. Leave blank for random.")
+  force := flag.Bool("f", false, "Force subdomain even if it is in use.")
   isServer := flag.Bool("server", false, "Is running as server.")
 
   flag.Parse()
 
   if *isServer {
-    os.Exit(Server(*port, subdomain))
+    os.Exit(Server(*port, subdomain, *force))
   } else {
-    os.Exit(Client(*port, subdomain))
+    os.Exit(Client(*port, subdomain, *force))
   }
 }
 
@@ -86,7 +87,7 @@ func DoMany(client redis.Conn, commands ...RedisCommand) error {
   return err
 }
 
-func Server(port int, subdomain *string) int {
+func Server(port int, subdomain *string, force bool) int {
   if len(*subdomain) == 0 {
     fmt.Fprintln(os.Stderr, "Invalid subdomain.")
     return 1
@@ -114,7 +115,7 @@ func Server(port int, subdomain *string) int {
   defer client.Close()
 
   _, err = redis.String(client.Do("GET", router + "rule"))
-  if err != redis.ErrNil {
+  if err != redis.ErrNil && !force {
     fmt.Println(fmt.Errorf("Subdomain is already in use."))
     return 1
   }
@@ -183,7 +184,7 @@ func Server(port int, subdomain *string) int {
   return 0
 }
 
-func Client(port int, subdomain *string) int {
+func Client(port int, subdomain *string, force bool) int {
   // Pick a random port [10000, 65535]
   remotePort := 10000 + rand.Intn(55536)
 
@@ -202,7 +203,7 @@ func Client(port int, subdomain *string) int {
 
   cmd := exec.Command("ssh",
     "-tR", fmt.Sprintf(":%d:localhost:%d", remotePort, port), "culatra",
-    "~/tunnel", "-server", "-p", strconv.Itoa(remotePort), "-s", sub)
+    "~/tunnel", "-server", "-p", strconv.Itoa(remotePort), "-s", sub, "-f", strconv.FormatBool(force))
   cmd.Stdout = os.Stdout
   cmd.Stderr = os.Stderr
   cmd.Stdin = os.Stdin
